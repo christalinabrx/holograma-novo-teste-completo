@@ -13,12 +13,16 @@ export class EmotionController {
         this.segmentation = null;
         this.segmentationReady = false;
         this.segmentationMask = null;
+
+        // Canvas invisível usado para processar a imagem
         this.processingCanvas = document.createElement('canvas');
         this.processingCtx = this.processingCanvas.getContext('2d');
         
         this._renderLoop();
     }
-
+    // ─────────────────────────────────────────────────────────
+    // INICIALIZA A SEGMENTAÇÃO
+    // ─────────────────────────────────────────────────────────
     async initSegmentation() {
         this.segmentation = new SelfieSegmentation({
              locateFile: (file) => {
@@ -35,6 +39,9 @@ export class EmotionController {
         this.segmentationReady = true;
     });
 }
+    // ─────────────────────────────────────────────────────────
+    // INICIA A CÂMERA
+    // ─────────────────────────────────────────────────────────
     async startDetection(stream) {
         this.video = document.createElement('video');
         this.video.srcObject = stream;
@@ -45,7 +52,9 @@ export class EmotionController {
         this._segmentationLoop();
         this._detectLoop();
     }
-    
+    // ─────────────────────────────────────────────────────────
+    // LOOP DA SEGMENTAÇÃO
+    // ─────────────────────────────────────────────────────────
     async _segmentationLoop() {
     if (!this.active) {
         return;
@@ -67,7 +76,9 @@ export class EmotionController {
 
     setTimeout(() => this._segmentationLoop(), 50);
 }
-    
+     // ─────────────────────────────────────────────────────────
+    // LOOP DA DETECÇÃO FACIAL
+    // ─────────────────────────────────────────────────────────  
     async _detectLoop() {
         if (!this.active) {
             setTimeout(() => this._detectLoop(), 250);
@@ -97,11 +108,89 @@ export class EmotionController {
                     this.onEmotionChange(top, exp[top]);
                 }
             }
-        } catch(e) {}
+        } catch(e) {
+            console.error('Erro na detecção facial:', e);
+        }
 
         setTimeout(() => this._detectLoop(), 250);
     }
 
+   // ─────────────────────────────────────────────────────────
+    // LOOP VISUAL
+    // ─────────────────────────────────────────────────────────
+    
+    _renderLoop() {
+        this._drawAll();
+        requestAnimationFrame(() => this._renderLoop());
+    }
+    
+ // ─────────────────────────────────────────────────────────
+    // REGISTRA OS CANVAS
+    // ─────────────────────────────────────────────────────────
+    
+    registerCanvas(id, canvas, videoEl) {
+        this.canvases[id] = { canvas, videoEl, ctx: canvas.getContext('2d') };
+    }
+    
+// ─────────────────────────────────────────────────────────
+    // DESENHA AS QUATRO FACES
+    // ─────────────────────────────────────────────────────────
+    
+    _drawAll() {
+        for (const [id, { canvas, videoEl, ctx }] of Object.entries(this.canvases)) {
+            if (!videoEl || !ctx || videoEl.readyState < 2) continue;
+            const w = canvas.width;
+            const h = canvas.height;
+
+            this._drawPersonOnly(ctx, w, h);
+
+            // Landmarks só no modo IA e se ativo
+            if (!this.carouselMode && this.showLandmarks && this._landmarks) {
+                this._drawLandmarks(ctx, w, h);
+            }
+        }
+    }
+
+    _drawLandmarks(ctx, w, h) {
+        const scaleX = w / (this.video.videoWidth  || w);
+        const scaleY = h / (this.video.videoHeight || h);
+        const pts    = this._landmarks.positions;
+
+        ctx.save();
+        ctx.fillStyle   = 'rgba(0, 255, 200, 0.85)';
+        ctx.strokeStyle = 'rgba(0, 255, 200, 0.4)';
+        ctx.lineWidth   = 0.8;
+
+        pts.forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x * scaleX, p.y * scaleY, 2, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        const groups = [
+            [0,16], [17,21], [22,26], [27,30],
+            [30,35], [36,41], [42,47], [48,59], [60,67]
+        ];
+
+        groups.forEach(([start, end]) => {
+            ctx.beginPath();
+            for (let i = start; i <= end; i++) {
+                const p = pts[i];
+                i === start
+                    ? ctx.moveTo(p.x * scaleX, p.y * scaleY)
+                    : ctx.lineTo(p.x * scaleX, p.y * scaleY);
+            }
+            if ([36,42,48,60].includes(start)) ctx.closePath();
+            ctx.stroke();
+        });
+
+        ctx.restore();
+    }
+
+     // ─────────────────────────────────────────────────────────
+    // DESENHA SOMENTE A PESSOA
+    // ─────────────────────────────────────────────────────────
+    
     _drawPersonOnly(ctx, w, h) {
     // Fundo preto
     ctx.fillStyle = '#000000';
@@ -155,66 +244,74 @@ export class EmotionController {
     );
         
 }
-
-    _renderLoop() {
-        this._drawAll();
-        requestAnimationFrame(() => this._renderLoop());
-    }
-
-    registerCanvas(id, canvas, videoEl) {
-        this.canvases[id] = { canvas, videoEl, ctx: canvas.getContext('2d') };
-    }
-
-    _drawAll() {
-        for (const [id, { canvas, videoEl, ctx }] of Object.entries(this.canvases)) {
-            if (!videoEl || !ctx || videoEl.readyState < 2) continue;
-            const w = canvas.width;
-            const h = canvas.height;
-
-            this._drawPersonOnly(ctx, w, h);
-
-            // Landmarks só no modo IA e se ativo
-            if (!this.carouselMode && this.showLandmarks && this._landmarks) {
-                this._drawLandmarks(ctx, w, h);
-            }
-        }
-    }
-
+    // ─────────────────────────────────────────────────────────
+    // LANDMARKS
+    // ─────────────────────────────────────────────────────────
     _drawLandmarks(ctx, w, h) {
-        const scaleX = w / (this.video.videoWidth  || w);
+        const scaleX = w / (this.video.videoWidth || w);
         const scaleY = h / (this.video.videoHeight || h);
-        const pts    = this._landmarks.positions;
+
+        const pts = this._landmarks.positions;
 
         ctx.save();
-        ctx.fillStyle   = 'rgba(0, 255, 200, 0.85)';
+
+        ctx.fillStyle = 'rgba(0, 255, 200, 0.85)';
         ctx.strokeStyle = 'rgba(0, 255, 200, 0.4)';
-        ctx.lineWidth   = 0.8;
+        ctx.lineWidth = 0.8;
 
         pts.forEach(p => {
             ctx.beginPath();
-            ctx.arc(p.x * scaleX, p.y * scaleY, 2, 0, Math.PI * 2);
+
+            ctx.arc(
+                p.x * scaleX,
+                p.y * scaleY,
+                2,
+                0,
+                Math.PI * 2
+            );
+
             ctx.fill();
         });
 
         const groups = [
-            [0,16], [17,21], [22,26], [27,30],
-            [30,35], [36,41], [42,47], [48,59], [60,67]
+            [0,16],
+            [17,21],
+            [22,26],
+            [27,30],
+            [30,35],
+            [36,41],
+            [42,47],
+            [48,59],
+            [60,67]
         ];
 
         groups.forEach(([start, end]) => {
             ctx.beginPath();
+
             for (let i = start; i <= end; i++) {
                 const p = pts[i];
+
                 i === start
-                    ? ctx.moveTo(p.x * scaleX, p.y * scaleY)
-                    : ctx.lineTo(p.x * scaleX, p.y * scaleY);
+                    ? ctx.moveTo(
+                        p.x * scaleX,
+                        p.y * scaleY
+                    )
+                    : ctx.lineTo(
+                        p.x * scaleX,
+                        p.y * scaleY
+                    );
             }
-            if ([36,42,48,60].includes(start)) ctx.closePath();
+
+            if ([36,42,48,60].includes(start)) {
+                ctx.closePath();
+            }
+
             ctx.stroke();
         });
 
         ctx.restore();
     }
+
 
      
     
