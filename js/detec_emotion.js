@@ -13,6 +13,8 @@ export class EmotionController {
         this.segmentation = null;
         this.segmentationReady = false;
         this.segmentationMask = null;
+        this.processingCanvas = document.createElement('canvas');
+        this.processingCtx = this.processingCanvas.getContext('2d');
         
         this._renderLoop();
     }
@@ -40,9 +42,32 @@ export class EmotionController {
         this.video.autoplay  = true;
         await this.video.play();
         this.active = true;
+        this._segmentationLoop();
         this._detectLoop();
     }
+    
+    async _segmentationLoop() {
+    if (!this.active) {
+        return;
+    }
 
+    try {
+        if (
+            this.segmentation &&
+            this.video &&
+            this.video.readyState >= 2
+        ) {
+            await this.segmentation.send({
+                image: this.video
+            });
+        }
+    } catch (e) {
+        console.error('Erro na segmentação:', e);
+    }
+
+    setTimeout(() => this._segmentationLoop(), 50);
+}
+    
     async _detectLoop() {
         if (!this.active) {
             setTimeout(() => this._detectLoop(), 250);
@@ -77,6 +102,60 @@ export class EmotionController {
         setTimeout(() => this._detectLoop(), 250);
     }
 
+    _drawPersonOnly(ctx, w, h) {
+    // Fundo preto
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, w, h);
+
+    // Se ainda não temos uma máscara,
+    // não desenhamos a câmera.
+    if (!this.segmentationMask) {
+        return;
+    }
+
+    // Ajusta o canvas intermediário
+    this.processingCanvas.width = w;
+    this.processingCanvas.height = h;
+
+    const pctx = this.processingCtx;
+
+    // Limpa o canvas intermediário
+    pctx.clearRect(0, 0, w, h);
+
+    // Desenha a câmera
+    pctx.drawImage(
+        this.video,
+        0,
+        0,
+        w,
+        h
+    );
+
+    // Usa a máscara para manter somente a pessoa
+    pctx.globalCompositeOperation = 'destination-in';
+
+    pctx.drawImage(
+        this.segmentationMask,
+        0,
+        0,
+        w,
+        h
+    );
+
+    // Volta ao modo normal
+    pctx.globalCompositeOperation = 'source-over';
+
+    // Coloca a pessoa no canvas do holograma
+    ctx.drawImage(
+        this.processingCanvas,
+        0,
+        0,
+        w,
+        h
+    );
+        
+}
+
     _renderLoop() {
         this._drawAll();
         requestAnimationFrame(() => this._renderLoop());
@@ -92,7 +171,7 @@ export class EmotionController {
             const w = canvas.width;
             const h = canvas.height;
 
-            ctx.drawImage(videoEl, 0, 0, w, h);
+            this._drawPersonOnly(ctx, w, h);
 
             // Landmarks só no modo IA e se ativo
             if (!this.carouselMode && this.showLandmarks && this._landmarks) {
@@ -136,4 +215,7 @@ export class EmotionController {
 
         ctx.restore();
     }
+
+     
+    
 }
