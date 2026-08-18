@@ -106,7 +106,7 @@ async function start() {
         playEmotionAudio(emotion);
     };
 
-    eCtrl.startDetection(stream);
+    eCtrl.startDetection(stream, hiddenVideo);
 
     document.getElementById('carouselToggleBtn').disabled  = false;
     document.getElementById('landmarksToggleBtn').disabled = false;
@@ -130,7 +130,9 @@ function startAudio(src) {
     const audio  = new Audio(src);
     audio.loop   = true;
     audio.volume = 0;
-    audio.play().catch(() => {});
+    audio.play().catch(err => {
+    console.error('ERRO AO TOCAR ÁUDIO:', err);
+});
     fadeIn(audio);
     currentAudio = audio;
 }
