@@ -8,7 +8,12 @@ export class EmotionController {
         this._landmarks       = null;
         this.showLandmarks    = false;
         this.carouselMode     = false;
-
+        
+        // ── Segmentação da pessoa ─────────────────────────────
+        this.segmentation = null;
+        this.segmentationReady = false;
+        this.segmentationMask = null;
+        
         this._renderLoop();
     }
 
