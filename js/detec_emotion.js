@@ -90,10 +90,17 @@ export class EmotionController {
     // INICIA A CÂMERA / DETECÇÃO
     // =============================================================
 
-    async startDetection(stream) {
+    async startDetection(stream, existingVideo = null) {
 
-        this.video =
-            document.createElement('video');
+    if (existingVideo) {
+        this.video = existingVideo;
+
+        if (this.video.paused) {
+            await this.video.play();
+        }
+
+    } else {
+        this.video = document.createElement('video');
 
         this.video.srcObject = stream;
         this.video.muted = true;
@@ -101,18 +108,12 @@ export class EmotionController {
         this.video.playsInline = true;
 
         await this.video.play();
-
-        this.active = true;
-
-        // A segmentação continua disponível
-        // para compatibilidade com outras partes
-        // do projeto.
-        if (this.segmentation) {
-            this._segmentationLoop();
-        }
-
-        this._detectLoop();
     }
+
+    this.active = true;
+
+    this._detectLoop();
+}
 
     // =============================================================
     // LOOP DA SEGMENTAÇÃO
