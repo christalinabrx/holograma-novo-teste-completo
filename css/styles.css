@@ -1,0 +1,262 @@
+/* Base — !important para sobrescrever Bootstrap */
+html, body {
+    background: #000 !important;
+    background-color: #000 !important;
+    color: white !important;
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+#loadingScreen {
+    position: fixed !important;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #000 !important;
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#loadingScreen h4,
+#loadingScreen p,
+#loadingScreen span {
+    color: #fff !important;
+}
+
+/* Grid 3x3 */
+.hologram-grid {
+    display: grid;
+    grid-template-columns: 300px 300px 300px;
+    grid-template-rows: 300px 300px 300px;
+    position: relative;
+    gap: 0;
+}
+
+/* Painel de controle */
+.main-controls {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+}
+
+.control-card {
+    background: rgba(30, 30, 30, 0.9);
+    padding: 15px;
+    border-radius: 12px;
+    border: 1px solid #444;
+    width: 250px;
+    text-align: center;
+}
+
+.hologram-face {
+    width: 300px;
+    height: 300px;
+    background: #000 !important;
+    overflow: hidden;
+    position: relative;
+}
+
+.hologram-face video,
+.hologram-face canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: filter 0.4s ease;
+}
+
+/* Rotações das faces */
+.top-face    { grid-column: 2; grid-row: 1; }
+.top-face    video, .top-face    canvas { transform: rotate(0deg)   scaleX(-1); }
+
+.bottom-face { grid-column: 2; grid-row: 3; }
+.bottom-face video, .bottom-face canvas { transform: rotate(180deg) scaleX(-1); }
+
+.left-face   { grid-column: 1; grid-row: 2; }
+.left-face   video, .left-face   canvas { transform: translateX(-60px) rotate(270deg) scaleX(-1); }
+
+.right-face  { grid-column: 3; grid-row: 2; }
+.right-face  video, .right-face  canvas { transform: translateX(60px) rotate(90deg) scaleX(-1); }
+
+
+/* ── Labels das faces no carrossel ── */
+/*
+  Cada face tem um transform CSS (rotate + scaleX).
+  A label é filha da face, então herda esse transform.
+  Precisamos contra-rotacionar para que fique legível
+  vista de fora do holograma (pela pessoa olhando a pirâmide).
+
+  top-face:    rotate(0deg)   scaleX(-1) → label: scaleX(-1)           (só desfaz espelho)
+  bottom-face: rotate(180deg) scaleX(-1) → label: rotate(180deg) scaleX(-1)
+  left-face:   rotate(270deg) scaleX(-1) → label: rotate(90deg)  scaleX(-1)
+  right-face:  rotate(90deg)  scaleX(-1) → label: rotate(-90deg) scaleX(-1)
+*/
+
+.face-label {
+    position: absolute;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    padding: 3px 10px;
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 4px;
+    background: rgba(0,0,0,0.7);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s, color 0.3s, border-color 0.3s;
+    z-index: 10;
+    white-space: nowrap;
+}
+
+/*
+ * Todas as labels ficam na borda INFERIOR da face (bottom: 14px, centralizado).
+ * Cada face tem um transform no canvas que rotaciona a imagem.
+ * A label NÃO herda esse transform (é irmã do canvas, filha da .hologram-face).
+ * Para aparecer legível na borda que fica voltada para fora da pirâmide:
+ *
+ * top-face:    canvas rotate(0) scaleX(-1)   → label na borda inferior → scaleX(-1)
+ * bottom-face: canvas rotate(180) scaleX(-1) → borda inferior vira a de cima da pirâmide
+ *                                               → label no top, rotate(180deg) scaleX(-1)
+ * left-face:   canvas rotate(270) scaleX(-1) → borda inferior vira a borda externa esquerda
+ *                                               → label no bottom, rotate(90deg) scaleX(-1)
+ * right-face:  canvas rotate(90) scaleX(-1)  → borda inferior vira a borda externa direita
+ *                                               → label no bottom, rotate(-90deg) scaleX(-1)
+ */
+
+.top-face .face-label {
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%) scaleX(-1);
+}
+
+.bottom-face .face-label {
+    top: 14px;
+    bottom: auto;
+    left: 50%;
+    transform: translateX(-50%) rotate(180deg) scaleX(-1);
+}
+
+.left-face .face-label {
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%) rotate(90deg) scaleX(-1);
+}
+
+.right-face .face-label {
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-90deg) scaleX(-1);
+}
+
+.carousel-active .face-label { opacity: 1; }
+
+
+/* ── Botões ── */
+#carouselToggleBtn,
+#landmarksToggleBtn {
+    width: 100%;
+    margin-top: 6px;
+    background: transparent;
+    border: 1px solid #555;
+    color: #aaa;
+    border-radius: 6px;
+    padding: 5px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+}
+
+#carouselToggleBtn:hover:not(:disabled),
+#landmarksToggleBtn:hover:not(:disabled) { border-color: #fff; color: #fff; }
+
+#carouselToggleBtn.active  { border-color: #fff;    color: #fff;    }
+#landmarksToggleBtn.active { border-color: #00ffc8; color: #00ffc8; }
+
+#landmarksToggleBtn.locked {
+    opacity: 0.3;
+    cursor: not-allowed;
+    border-color: #333;
+    color: #555;
+}
+
+#carouselToggleBtn:disabled,
+#landmarksToggleBtn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+
+/* ── Dica de teclado ── */
+#keyboardHint { font-size: 10px; color: #666; margin-top: 6px; }
+#keyboardHint.hidden { display: none; }
+
+
+/* ── Painéis ── */
+#carouselPanel        { display: none; margin-top: 10px; }
+#carouselPanel.hidden { display: none; }
+#aiPanel.hidden       { display: none; }
+
+.carousel-face-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    text-align: left;
+}
+.carousel-face-item {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 9px;
+}
+.carousel-face-item .face-name {
+    color: #555;
+    display: block;
+    font-size: 8px;
+    margin-bottom: 1px;
+}
+
+
+/* ── Widget ∞ flutuante ── */
+#infinityWidget {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 2000;
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+}
+#infinityWidget.visible { opacity: 1; }
+
+.inf-symbol {
+    font-size: 48px;
+    line-height: 1;
+    color: #fff;
+    display: block;
+    transition: color 0.3s;
+}
+.inf-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    letter-spacing: 1px;
+    margin-top: 2px;
+    width: 80px;
+    margin-left: auto;
+    margin-right: auto;
+}
+.inf-out { color: #aaa; }
+.inf-in  { color: #fff; }
+
+#infinityWidget.pulse .inf-symbol {
+    animation: inf-flash 0.35s ease;
+}
+@keyframes inf-flash {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.3); }
+    100% { transform: scale(1); }
+}

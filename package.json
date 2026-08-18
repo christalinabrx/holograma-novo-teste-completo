@@ -1,0 +1,23 @@
+{
+  "name": "holograma-3d-emotions",
+  "version": "1.0.0",
+  "description": "Holograma 3D com detecção de emoções usando face-api.js",
+  "main": "index.html",
+  "scripts": {
+    "start": "live-server --port=3000 --host=localhost",
+    "setup-models": "node scripts/download-models.js",
+    "dev": "concurrently \"npm run start\"",
+    "build": "echo 'Build completo!'"
+  },
+  "keywords": ["hologram", "emotion-detection", "face-api", "art-tech"],
+  "author": "Antenor Brito Pessoa Junior <antenor.junior.009@ufrn.edu.br>",
+  "license": "MIT",
+  "dependencies": {
+    "face-api.js": "^0.22.2",
+    "tone": "^14.7.77"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2",
+    "concurrently": "^8.2.0"
+  }
+}
