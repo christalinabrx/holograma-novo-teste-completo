@@ -156,68 +156,54 @@ export class EmotionController {
     // =============================================================
 
     async _detectLoop() {
+    if (!this.active || !this.video) {
+        setTimeout(() => this._detectLoop(), 100);
+        return;
+    }
 
-        if (!this.active) {
-
-            setTimeout(
-                () => this._detectLoop(),
-                250
-            );
-
+    try {
+        if (this.video.readyState < 2) {
+            setTimeout(() => this._detectLoop(), 100);
             return;
         }
 
-        try {
+        const options = new faceapi.TinyFaceDetectorOptions({
+            inputSize: 416,
+            scoreThreshold: 0.45
+        });
 
-            const detection =
-                await faceapi
-                    .detectSingleFace(
-                        this.video,
-                        new faceapi.TinyFaceDetectorOptions()
-                    )
-                    .withFaceLandmarks(true)
-                    .withFaceExpressions();
+        const detection = await faceapi
+            .detectSingleFace(this.video, options)
+            .withFaceLandmarks(true)
+            .withFaceExpressions();
 
-            // -----------------------------------------------------
-            // ROSTO DETECTADO
-            // -----------------------------------------------------
+        if (detection) {
+            // Guarda a caixa principal do rosto.
+            this._faceBox = detection.detection.box;
 
-            if (detection) {
+            // Guarda landmarks apenas para visualização opcional.
+            this._landmarks = detection.landmarks || null;
 
-                this._faceBox =
-                    detection.detection.box;
+            // Analisa a expressão.
+            this._stabilizeEmotion(detection.expressions);
 
-                this._landmarks =
-                    detection.landmarks;
-
-                // -------------------------------------------------
-                // EMOÇÕES
-                // -------------------------------------------------
-
-                this._stabilizeEmotion(
-                    detection.expressions
-                );
-
-            } else {
-
-                this._faceBox = null;
-                this._landmarks = null;
-            }
-
-        } catch (e) {
-
-            console.error(
-                'Erro na detecção facial:',
-                e
+            console.log(
+                'ROSTO DETECTADO',
+                this._faceBox,
+                detection.expressions
             );
+
+        } else {
+            this._faceBox = null;
+            this._landmarks = null;
         }
 
-        setTimeout(
-            () => this._detectLoop(),
-            250
-        );
+    } catch (e) {
+        console.error('ERRO NA DETECÇÃO FACIAL:', e);
     }
 
+    setTimeout(() => this._detectLoop(), 100);
+}
     // =============================================================
     // ESTABILIZAÇÃO DAS EMOÇÕES
     // =============================================================
@@ -423,428 +409,117 @@ export class EmotionController {
     // RECORTE DO ROSTO USANDO LANDMARKS
     // =============================================================
 
-    _drawFaceOnly(
-        ctx,
+   _drawFaceOnly(ctx, w, h) {
+
+    // =========================================================
+    // FUNDO PRETO
+    // =========================================================
+
+    ctx.save();
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.restore();
+
+    // =========================================================
+    // SEM DETECÇÃO
+    // =========================================================
+
+    if (!this.video || !this._faceBox) {
+        return;
+    }
+
+    const videoW = this.video.videoWidth;
+    const videoH = this.video.videoHeight;
+
+    if (!videoW || !videoH) {
+        return;
+    }
+
+    // =========================================================
+    // CAIXA DO ROSTO
+    // =========================================================
+
+    const box = this._faceBox;
+
+    // =========================================================
+    // EXPANDE O ROSTO PARA PEGAR A CABEÇA
+    // =========================================================
+
+    // Quanto maior, mais cabelo/pescoço entram.
+    const expandX = box.width * 0.65;
+    const expandTop = box.height * 0.85;
+    const expandBottom = box.height * 0.55;
+
+    let sx = box.x - expandX;
+    let sy = box.y - expandTop;
+
+    let sw = box.width + expandX * 2;
+    let sh = box.height + expandTop + expandBottom;
+
+    // =========================================================
+    // NÃO DEIXA O RECORTE SAIR DA CÂMERA
+    // =========================================================
+
+    sx = Math.max(0, sx);
+    sy = Math.max(0, sy);
+
+    sw = Math.min(sw, videoW - sx);
+    sh = Math.min(sh, videoH - sy);
+
+    if (sw <= 0 || sh <= 0) {
+        return;
+    }
+
+    // =========================================================
+    // DESENHA SOMENTE A ÁREA DA CABEÇA
+    // =========================================================
+
+    ctx.save();
+
+    ctx.beginPath();
+
+    // Máscara oval suave para a cabeça.
+    const centerX = w / 2;
+    const centerY = h / 2;
+
+    const radiusX = w * 0.42;
+    const radiusY = h * 0.48;
+
+    ctx.ellipse(
+        centerX,
+        centerY,
+        radiusX,
+        radiusY,
+        0,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.clip();
+
+    ctx.drawImage(
+        this.video,
+        sx,
+        sy,
+        sw,
+        sh,
+        0,
+        0,
         w,
         h
-    ) {
+    );
 
-        // ---------------------------------------------------------
-        // FUNDO PRETO
-        // ---------------------------------------------------------
+    ctx.restore();
 
-        ctx.save();
+    // =========================================================
+    // GARANTE QUE O FUNDO CONTINUE PRETO
+    // =========================================================
 
-        ctx.globalCompositeOperation =
-            'source-over';
-
-        ctx.fillStyle = '#000000';
-
-        ctx.fillRect(
-            0,
-            0,
-            w,
-            h
-        );
-
-        ctx.restore();
-
-        // ---------------------------------------------------------
-        // SEM ROSTO
-        // ---------------------------------------------------------
-
-        if (
-            !this.video ||
-            !this._landmarks ||
-            !this._landmarks.positions
-        ) {
-            return;
-        }
-
-        const points =
-            this._landmarks.positions;
-
-        if (points.length < 68) {
-            return;
-        }
-
-        // ---------------------------------------------------------
-        // DIMENSÕES DA CÂMERA
-        // ---------------------------------------------------------
-
-        const videoW =
-            this.video.videoWidth;
-
-        const videoH =
-            this.video.videoHeight;
-
-        if (
-            !videoW ||
-            !videoH
-        ) {
-            return;
-        }
-
-        const scaleX =
-            w / videoW;
-
-        const scaleY =
-            h / videoH;
-
-        // ---------------------------------------------------------
-        // FUNÇÃO PARA CONVERTER LANDMARK
-        // PARA O CANVAS
-        // ---------------------------------------------------------
-
-        const point = (index) => {
-
-            return {
-                x:
-                    points[index].x *
-                    scaleX,
-
-                y:
-                    points[index].y *
-                    scaleY
-            };
-        };
-
-        // =========================================================
-        // MANDÍBULA
-        // =========================================================
-
-        const jaw = [];
-
-        for (
-            let i = 0;
-            i <= 16;
-            i++
-        ) {
-
-            jaw.push(
-                point(i)
-            );
-        }
-
-        // =========================================================
-        // SOBRANCELHAS
-        // =========================================================
-
-        let browMinY =
-            Infinity;
-
-        for (
-            let i = 17;
-            i <= 26;
-            i++
-        ) {
-
-            const p =
-                point(i);
-
-            browMinY =
-                Math.min(
-                    browMinY,
-                    p.y
-                );
-        }
-
-        const leftJaw =
-            jaw[0];
-
-        const rightJaw =
-            jaw[16];
-
-        // =========================================================
-        // CENTRO DO ROSTO
-        // =========================================================
-
-        const centerX =
-            (
-                leftJaw.x +
-                rightJaw.x
-            ) / 2;
-
-        // =========================================================
-        // ALTURA DA MANDÍBULA
-        // =========================================================
-
-        let jawMaxY =
-            -Infinity;
-
-        for (
-            const p of jaw
-        ) {
-
-            jawMaxY =
-                Math.max(
-                    jawMaxY,
-                    p.y
-                );
-        }
-
-        const faceHeight =
-            Math.max(
-                jawMaxY -
-                browMinY,
-                1
-            );
-
-        // =========================================================
-        // ESTIMATIVA DA TESTA
-        // =========================================================
-
-        /*
-         * O modelo de 68 landmarks não possui
-         * pontos reais na testa.
-         *
-         * Por isso usamos as sobrancelhas
-         * como referência.
-         */
-
-        const foreheadY =
-            browMinY -
-            faceHeight * 0.55;
-
-        // =========================================================
-        // REDIMENSIONA OS CANVASES INTERNOS
-        // SOMENTE QUANDO NECESSÁRIO
-        // =========================================================
-
-        this._resizeCanvas(
-            this.faceImageCanvas,
-            w,
-            h
-        );
-
-        this._resizeCanvas(
-            this.faceMaskCanvas,
-            w,
-            h
-        );
-
-        this._resizeCanvas(
-            this.faceBlurCanvas,
-            w,
-            h
-        );
-
-        const imageCtx =
-            this.faceImageCtx;
-
-        const maskCtx =
-            this.faceMaskCtx;
-
-        const blurCtx =
-            this.faceBlurCtx;
-
-        imageCtx.clearRect(
-            0,
-            0,
-            w,
-            h
-        );
-
-        maskCtx.clearRect(
-            0,
-            0,
-            w,
-            h
-        );
-
-        blurCtx.clearRect(
-            0,
-            0,
-            w,
-            h
-        );
-
-        // =========================================================
-        // CONSTRÓI O CONTORNO DO ROSTO
-        // =========================================================
-
-        maskCtx.save();
-
-        maskCtx.fillStyle =
-            '#ffffff';
-
-        maskCtx.beginPath();
-
-        // ---------------------------------------------------------
-        // COMEÇA NA MANDÍBULA ESQUERDA
-        // ---------------------------------------------------------
-
-        maskCtx.moveTo(
-            jaw[0].x,
-            jaw[0].y
-        );
-
-        // ---------------------------------------------------------
-        // SEGUE OS 17 LANDMARKS DA MANDÍBULA
-        // ---------------------------------------------------------
-
-        for (
-            let i = 1;
-            i <= 16;
-            i++
-        ) {
-
-            maskCtx.lineTo(
-                jaw[i].x,
-                jaw[i].y
-            );
-        }
-
-        // =========================================================
-        // LADO DIREITO → TESTA
-        // =========================================================
-
-        maskCtx.bezierCurveTo(
-
-            rightJaw.x,
-
-            rightJaw.y -
-                faceHeight * 0.30,
-
-            centerX +
-                (
-                    rightJaw.x -
-                    centerX
-                ) * 0.92,
-
-            foreheadY +
-                faceHeight * 0.18,
-
-            centerX,
-
-            foreheadY
-        );
-
-        // =========================================================
-        // TESTA → LADO ESQUERDO
-        // =========================================================
-
-        maskCtx.bezierCurveTo(
-
-            centerX -
-                (
-                    centerX -
-                    leftJaw.x
-                ) * 0.92,
-
-            foreheadY +
-                faceHeight * 0.18,
-
-            leftJaw.x,
-
-            leftJaw.y -
-                faceHeight * 0.30,
-
-            leftJaw.x,
-
-            leftJaw.y
-        );
-
-        maskCtx.closePath();
-
-        maskCtx.fill();
-
-        maskCtx.restore();
-
-        // =========================================================
-        // SUAVIZA SOMENTE A MÁSCARA
-        // =========================================================
-
-        blurCtx.save();
-
-        /*
-         * A imagem da câmera NÃO recebe blur.
-         *
-         * Apenas o alpha da máscara é suavizado.
-         */
-
-        blurCtx.filter =
-            'blur(3px)';
-
-        blurCtx.drawImage(
-            this.faceMaskCanvas,
-            0,
-            0,
-            w,
-            h
-        );
-
-        blurCtx.restore();
-
-        // =========================================================
-        // DESENHA A CÂMERA NO CANVAS INTERNO
-        // =========================================================
-
-        imageCtx.drawImage(
-            this.video,
-
-            0,
-            0,
-            videoW,
-            videoH,
-
-            0,
-            0,
-            w,
-            h
-        );
-
-        // =========================================================
-        // APLICA O ALPHA DA MÁSCARA
-        // =========================================================
-
-        imageCtx.globalCompositeOperation =
-            'destination-in';
-
-        imageCtx.drawImage(
-            this.faceBlurCanvas,
-
-            0,
-            0,
-            w,
-            h
-        );
-
-        imageCtx.globalCompositeOperation =
-            'source-over';
-
-        // =========================================================
-        // CANVAS PRINCIPAL
-        // =========================================================
-
-        ctx.save();
-
-        ctx.globalCompositeOperation =
-            'source-over';
-
-        // Fundo preto.
-        ctx.fillStyle =
-            '#000000';
-
-        ctx.fillRect(
-            0,
-            0,
-            w,
-            h
-        );
-
-        // Rosto recortado.
-        ctx.drawImage(
-            this.faceImageCanvas,
-
-            0,
-            0,
-            w,
-            h
-        );
-
-        ctx.restore();
-    }
+    // Nada além da área recortada é desenhado.
+}
 
     // =============================================================
     // REDIMENSIONA CANVAS SOMENTE QUANDO NECESSÁRIO
