@@ -17,6 +17,22 @@ export class EmotionController {
         this._renderLoop();
     }
 
+    async initSegmentation() {
+        this.segmentation = new SelfieSegmentation({
+             locateFile: (file) => {
+             return `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`;
+        }
+    });
+
+        this.segmentation.setOptions({
+            modelSelection: 1
+    });
+
+    this.segmentation.onResults((results) => {
+        this.segmentationMask = results.segmentationMask;
+        this.segmentationReady = true;
+    });
+}
     async startDetection(stream) {
         this.video = document.createElement('video');
         this.video.srcObject = stream;
