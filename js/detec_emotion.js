@@ -153,42 +153,62 @@ export class EmotionController {
      // ─────────────────────────────────────────────────────────
     // LOOP DA DETECÇÃO FACIAL
     // ─────────────────────────────────────────────────────────  
-    async _detectLoop() {
-        if (!this.active) {
-            setTimeout(() => this._detectLoop(), 250);
-            return;
-        }
-
-        try {
-            let detection;
-            if (this.showLandmarks) {
-                detection = await faceapi
-                    .detectSingleFace(this.video, new faceapi.TinyFaceDetectorOptions())
-                    .withFaceLandmarks(true)
-                    .withFaceExpressions();
-            if (detection) {
-                this._faceBox = detection.detection.box;
-
-                const exp = detection.expressions;
-
-                this._stabilizeEmotion(exp);
-}
-
-            if (detection) {
-                this._faceBox = detection.detection.box;
-                if (this.onEmotionChange) {
-                    const exp = detection.expressions;
-                    const top = Object.keys(exp).reduce((a, b) => exp[a] > exp[b] ? a : b);
-                    this.onEmotionChange(top, exp[top]);
-                }
-            }
-        } catch(e) {
-            console.error('Erro na detecção facial:', e);
-        }
-
+   async _detectLoop() {
+    if (!this.active) {
         setTimeout(() => this._detectLoop(), 250);
+        return;
     }
 
+    try {
+        let detection;
+
+        if (this.showLandmarks) {
+
+            detection = await faceapi
+                .detectSingleFace(
+                    this.video,
+                    new faceapi.TinyFaceDetectorOptions()
+                )
+                .withFaceLandmarks(true)
+                .withFaceExpressions();
+
+            if (detection) {
+                this._faceBox = detection.detection.box;
+                this._landmarks = detection.landmarks;
+            } else {
+                this._landmarks = null;
+            }
+
+        } else {
+
+            detection = await faceapi
+                .detectSingleFace(
+                    this.video,
+                    new faceapi.TinyFaceDetectorOptions()
+                )
+                .withFaceExpressions();
+
+            this._landmarks = null;
+        }
+
+        // ─────────────────────────────────────────────
+        // ESTABILIZAÇÃO DA EMOÇÃO
+        // ─────────────────────────────────────────────
+
+        if (detection) {
+            this._faceBox = detection.detection.box;
+
+            const exp = detection.expressions;
+
+            this._stabilizeEmotion(exp);
+        }
+
+    } catch (e) {
+        console.error('Erro na detecção facial:', e);
+    }
+
+    setTimeout(() => this._detectLoop(), 250);
+}
    // ─────────────────────────────────────────────────────────
     // LOOP VISUAL
     // ─────────────────────────────────────────────────────────
