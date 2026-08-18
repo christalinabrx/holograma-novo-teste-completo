@@ -77,6 +77,8 @@ async function start() {
     hCtrl = new HologramController();
     eCtrl = new EmotionController();
 
+    await eCtrl.initSegmentation();
+
     // Substitui <video> por <canvas> mantendo estilos CSS
     FACE_IDS.forEach(faceId => {
         const videoEl = document.getElementById(faceId);
