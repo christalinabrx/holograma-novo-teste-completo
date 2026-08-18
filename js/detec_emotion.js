@@ -8,6 +8,18 @@ export class EmotionController {
         this._landmarks       = null;
         this.showLandmarks    = false;
         this.carouselMode     = false;
+
+            // ── Estabilização das emoções ──────────────────────────
+        this.currentEmotion = 'neutral';
+        this.pendingEmotion = null;
+        this.pendingCount = 0;
+
+        this.emotionHistory = [];
+
+        this.minEmotionConfidence = 0.60;
+        this.minEmotionMargin = 0.15;
+        this.requiredConfirmations = 3;
+        this.historySize = 5;
         
         // ── Segmentação da pessoa ─────────────────────────────
         this.segmentation = null;
@@ -17,6 +29,12 @@ export class EmotionController {
         // Canvas invisível usado para processar a imagem
         this.processingCanvas = document.createElement('canvas');
         this.processingCtx = this.processingCanvas.getContext('2d');
+
+        this.maskCanvas = document.createElement('canvas');
+        this.maskCtx = this.maskCanvas.getContext('2d');
+
+        this.smoothMaskCanvas = document.createElement('canvas');
+        this.smoothMaskCtx = this.smoothMaskCanvas.getContext('2d');
         
         this._renderLoop();
     }
@@ -76,6 +94,62 @@ export class EmotionController {
 
     setTimeout(() => this._segmentationLoop(), 50);
 }
+    _stabilizeEmotion(expressions) {
+
+    const sorted = Object.entries(expressions)
+        .sort((a, b) => b[1] - a[1]);
+
+    const [topEmotion, topScore] = sorted[0];
+    const [, secondScore] = sorted[1];
+
+    // 1. Confiança mínima
+    if (topScore < this.minEmotionConfidence) {
+        return;
+    }
+
+    // 2. Diferença mínima entre a primeira e a segunda emoção
+    if ((topScore - secondScore) < this.minEmotionMargin) {
+        return;
+    }
+
+    // Guarda no histórico
+    this.emotionHistory.push({
+        emotion: topEmotion,
+        score: topScore
+    });
+
+    if (this.emotionHistory.length > this.historySize) {
+        this.emotionHistory.shift();
+    }
+
+    // Verifica se a emoção apareceu várias vezes
+    const recentMatches = this.emotionHistory.filter(
+        item => item.emotion === topEmotion
+    ).length;
+
+    // Se ainda não houver confirmação suficiente
+    if (recentMatches < this.requiredConfirmations) {
+        return;
+    }
+
+    // Já é a emoção atual
+    if (topEmotion === this.currentEmotion) {
+        return;
+    }
+
+    // Nova emoção confirmada
+    this.currentEmotion = topEmotion;
+
+    this.pendingEmotion = null;
+    this.pendingCount = 0;
+
+    if (this.onEmotionChange) {
+        this.onEmotionChange(
+            topEmotion,
+            topScore
+        );
+    }
+}
      // ─────────────────────────────────────────────────────────
     // LOOP DA DETECÇÃO FACIAL
     // ─────────────────────────────────────────────────────────  
@@ -92,13 +166,13 @@ export class EmotionController {
                     .detectSingleFace(this.video, new faceapi.TinyFaceDetectorOptions())
                     .withFaceLandmarks(true)
                     .withFaceExpressions();
-                if (detection) this._landmarks = detection.landmarks;
-            } else {
-                detection = await faceapi
-                    .detectSingleFace(this.video, new faceapi.TinyFaceDetectorOptions())
-                    .withFaceExpressions();
-                this._landmarks = null;
-            }
+            if (detection) {
+                this._faceBox = detection.detection.box;
+
+                const exp = detection.expressions;
+
+                this._stabilizeEmotion(exp);
+}
 
             if (detection) {
                 this._faceBox = detection.detection.box;
@@ -191,27 +265,36 @@ export class EmotionController {
     // DESENHA SOMENTE A PESSOA
     // ─────────────────────────────────────────────────────────
     
-    _drawPersonOnly(ctx, w, h) {
+  _drawPersonOnly(ctx, w, h) {
+
     // Fundo preto
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
 
-    // Se ainda não temos uma máscara,
-    // não desenhamos a câmera.
     if (!this.segmentationMask) {
         return;
     }
 
-    // Ajusta o canvas intermediário
+    // Ajusta os canvases
     this.processingCanvas.width = w;
     this.processingCanvas.height = h;
 
-    const pctx = this.processingCtx;
+    this.maskCanvas.width = w;
+    this.maskCanvas.height = h;
 
-    // Limpa o canvas intermediário
+    this.smoothMaskCanvas.width = w;
+    this.smoothMaskCanvas.height = h;
+
+    const pctx = this.processingCtx;
+    const mctx = this.maskCtx;
+    const sctx = this.smoothMaskCtx;
+
+    // ─────────────────────────────────────────────
+    // CÂMERA
+    // ─────────────────────────────────────────────
+
     pctx.clearRect(0, 0, w, h);
 
-    // Desenha a câmera
     pctx.drawImage(
         this.video,
         0,
@@ -220,10 +303,13 @@ export class EmotionController {
         h
     );
 
-    // Usa a máscara para manter somente a pessoa
-    pctx.globalCompositeOperation = 'destination-in';
+    // ─────────────────────────────────────────────
+    // MÁSCARA
+    // ─────────────────────────────────────────────
 
-    pctx.drawImage(
+    mctx.clearRect(0, 0, w, h);
+
+    mctx.drawImage(
         this.segmentationMask,
         0,
         0,
@@ -231,10 +317,44 @@ export class EmotionController {
         h
     );
 
-    // Volta ao modo normal
+    // ─────────────────────────────────────────────
+    // SUAVIZAÇÃO DA MÁSCARA
+    // ─────────────────────────────────────────────
+
+    sctx.clearRect(0, 0, w, h);
+
+    sctx.filter = 'blur(2px)';
+
+    sctx.drawImage(
+        this.maskCanvas,
+        0,
+        0,
+        w,
+        h
+    );
+
+    sctx.filter = 'none';
+
+    // ─────────────────────────────────────────────
+    // APLICA A MÁSCARA
+    // ─────────────────────────────────────────────
+
+    pctx.globalCompositeOperation = 'destination-in';
+
+    pctx.drawImage(
+        this.smoothMaskCanvas,
+        0,
+        0,
+        w,
+        h
+    );
+
     pctx.globalCompositeOperation = 'source-over';
 
-    // Coloca a pessoa no canvas do holograma
+    // ─────────────────────────────────────────────
+    // RESULTADO
+    // ─────────────────────────────────────────────
+
     ctx.drawImage(
         this.processingCanvas,
         0,
@@ -242,7 +362,6 @@ export class EmotionController {
         w,
         h
     );
-        
 }
     // ─────────────────────────────────────────────────────────
     // LANDMARKS
